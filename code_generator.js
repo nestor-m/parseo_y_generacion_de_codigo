@@ -8,7 +8,7 @@ function crearArchivo(nombreArchivo, contenido){
 	    if(err) {
 	        return console.log(err);
 	    }
-	    console.log("The file was saved!");
+	    console.log("The " + nombreArchivo + " file was saved!");
 	});
 }
 
@@ -47,7 +47,10 @@ module.exports =
   function compilarDefinicion(tags, env, reg, def){
   	var r = compilarExpresion(tags, env, def[2], reg);
   	r.instrucciones = [declararEtiqueta(def[1])].concat(r.instrucciones);
-  	r.instrucciones.push(gen_mov_reg(env[def[1]], "$r" + reg));
+    if(def[1] != "main"){
+      r.instrucciones.push(gen_mov_reg(env[def[1]], "$r" + reg));
+      r.instrucciones.push(gen_return());
+    }
   	return r;
   }
 
@@ -178,9 +181,11 @@ module.exports =
 	  		break;
 	  	case "ExprVar":	  		
 	  		if(env[exp[1]]){
-			  	var instrucciones = [
-		  			gen_mov_reg(r, env[exp[1]])
-		  		];
+          var instrucciones = [];
+          if(env[exp[1]].startsWith("@G_")){ // si es una funcion tengo que compilar call()
+            instrucciones.push(gen_call(exp[1]));
+          }
+          instrucciones.push(gen_mov_reg(r, env[exp[1]]));
 		  		return {
 		  			instrucciones: instrucciones,
 		  			env: env,
@@ -278,43 +283,6 @@ module.exports =
   		}
   	});
   	return r;
-  }
-
-  // TODO: BORRAR SI NO SE USA, NO DEBERIA USARSE
-  function renombrarVariable(exp, viejoNombre, nuevoNombre){
-  	//console.log(exp);
-  	//console.log(exp[0]);
-  	var r = exp;
-  	switch(exp[0]){
-  		case "ExprVar":
-  			if(exp[1] == viejoNombre){
-  				r[1] = nuevoNombre;
-  			}
-  			break;
-  		case "ExprLet":
-  			r[2] = renombrarVariable(r[2], viejoNombre, nuevoNombre);
-  			r[3] = renombrarVariable(r[3], viejoNombre, nuevoNombre);
-  			if(exp[1] == viejoNombre){
-  				r[1] = nuevoNombre;
-  			}
-  			break;
-
-  		case "ExprApply":
-  			r[1] = renombrarVariable(r[1], viejoNombre, nuevoNombre);
-  			r[2] = renombrarVariable(r[2], viejoNombre, nuevoNombre);
-  			break;
-  	}
-  	return r;
-  }
-
-  // TODO: BORRAR SI NO SE USA, NO DEBERIA USARSE
-  function renombrarLetsRepetidos(jsonAST){
-  	var r = [];
-  	jsonAST.forEach(function(e){
-  		if(e[2] == "ExprLet"){
-  			// TODO:
-  		}
-  	});
   }
 
   // GENERACION DE INSTRUCCIONES
