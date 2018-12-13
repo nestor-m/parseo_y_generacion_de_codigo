@@ -1,0 +1,6 @@
+def main =
+  let x = 1 in (
+    (let x = 2 in unsafePrintInt x);
+    unsafePrintInt x
+  )
+

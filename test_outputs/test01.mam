@@ -1,0 +1,10 @@
+jump(main)
+main:
+alloc($r0, 2)
+mov_int($t, 2)
+store($r0, 0, $t)
+mov_int($t, 65)
+store($r0, 1, $t)
+load($r1, $r0, 1)
+print_char($r1)
+mov_reg(@G_main, $r0)
