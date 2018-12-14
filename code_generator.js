@@ -19,7 +19,7 @@ module.exports =
 
   const INT = "Int";
   const CHAR = "Char";
-  const CLOSURE = "Closure";
+  const TAG_CLOSURE = 3;
 
   const FUN_GLOBAL = "@fun";
   const FUN_LOCAL = "$fun";
@@ -29,7 +29,6 @@ module.exports =
   const RES_LOCAL = "$res";
 
   function compilarAST(jsonAST){  	
-  	//console.log(JSON.stringify(jsonAST));
   	var tags = armarTablaDeTags(jsonAST);
   	var env = inicializarEntorno(jsonAST);
   	var instrucciones = [gen_jump("main")];
@@ -44,23 +43,52 @@ module.exports =
   	return instrucciones;
   }
 
+  var defActual;
+  var i_fun = 2; // indice del registro $fun, se utiliza en la compilacion del lambda
+
   function compilarDefinicion(tags, env, reg, def){
+    i_fun = 2;
+    defActual = def[1];
+    console.log("COMPILANDO " + defActual);
   	var r = compilarExpresion(tags, env, def[2], reg);
-  	r.instrucciones = [declararEtiqueta(def[1])].concat(r.instrucciones);
-    if(def[1] != "main"){
-      r.instrucciones.push(gen_mov_reg(env[def[1]], "$r" + reg));
+    if(def[2][0] == "ExprLambda"){
+      // es expresion lambda
+      var r_def = "$r" + (r.reg + 1);
+      const t = "$t";
+      r.instrucciones = r.instrucciones.concat([
+        declararEtiqueta(defActual),
+        gen_alloc(r_def, 2),
+        gen_mov_int(t, TAG_CLOSURE),
+        gen_store(r_def, 0, t),
+        gen_mov_label(t, r.label),
+        gen_store(r_def, 1, t),
+        gen_mov_reg("@G_" + defActual, r_def),
+        gen_return()
+      ]);
+        /*etiqueta:
+        alloc($r4,2)
+        mov_int($t,3)
+        store($r4,0,$t)
+        mov_label($t,test_0)
+        store($r4,1,$t)
+        mov_reg(@G_test, $r4)
+        return()*/      
+    }else{
+      // no es expresion lambda
+      r.instrucciones = [declararEtiqueta(defActual)].concat(r.instrucciones);
+    }
+    if(def[1] != "main" && def[2][0] != "ExprLambda"){
+      r.instrucciones.push(gen_mov_reg(env[defActual], "$r" + reg));
       r.instrucciones.push(gen_return());
     }
   	return r;
-  }
+  }  
 
   // compilarExpresion :: Env -> Expr -> Reg -> [Instruccion]
   function compilarExpresion(tags, env, exp, reg){
-  	//console.log(exp);
-  	//console.log(env);
   	const r = "$r" + reg;
   	const t = "$t";
-  	var rtn_i = "rtn_" + reg;
+  	var rtn_i = defActual + "_" + reg;
   	switch(exp[0]){
   		case "ExprChar":
 		  	var instrucciones = [  			
@@ -100,29 +128,25 @@ module.exports =
 		  	}
 		  	// aplicacion de expresion lambda
 		  	if(exp[1][0] == "ExprLambda"){
+          i_fun = 2;
 		  		var comp_e1 = compilarExpresion(tags, env, exp[1], reg + 1);
 	  			var comp_e2 = compilarExpresion(tags, env, exp[2], comp_e1.reg);	  			
 	  			var r1 = "$r" + (reg + 1);
-	  			var rtn_i = "rtn_" + (reg + 1);
+	  			var rtn_i = defActual + "_" + (reg + 1);
 	  			var r2 = "$r" + comp_e1.reg;
-	  			//var r3 = "$r" + comp_e2.reg;
-	  			//var r4 = "$r" + comp_e2.reg;
-	  			var variablesLibres = getVariablesLibres(exp[1][0]); // TODO
 	  			const start = "start_" + (reg + 1);
 	  			var instrucciones = [
 	  				gen_jump(start),
 	  				...comp_e1.instrucciones,
 		  			declararEtiqueta(start),
-		  			gen_alloc(r, 2 + variablesLibres.length),
-		  			gen_mov_int(t, tags[CLOSURE]),
+		  			gen_alloc(r, 2 + getCantidadVariablesLibres(exp[1][0], env)),
+		  			gen_mov_int(t, TAG_CLOSURE),
 		  			gen_store(r, 0, t),
 		  			gen_mov_label(t, rtn_i),
 		  			gen_store(r, 1, t),
 	  				...comp_e2.instrucciones,
-	  				//gen_load(r3, FUN_GLOBAL, 1),
 	  				gen_mov_reg(FUN_GLOBAL, r1),
 	  				gen_mov_reg(ARG_GLOBAL, r2),
-	  				//gen_icall(r3),
 	  				gen_call(rtn_i),
 	  				gen_mov_reg(r, RES_GLOBAL)
 	  			];
@@ -132,7 +156,7 @@ module.exports =
 		  			reg: comp_e2.reg
 		  		};		  		
 		  	}
-		  	if(exp[1][0] == "ExprVar"){
+		  	if(exp[1][0] == "ExprVar" || exp[1][0] == "ExprApply"){
 		  		var comp_e1 = compilarExpresion(tags, env, exp[1], reg + 1);
 		  		var comp_e2 = compilarExpresion(tags, env, exp[2], comp_e1.reg);
 		  		var r1 = "$r" + (reg + 1);
@@ -179,13 +203,17 @@ module.exports =
 	  			reg: reg + 1
 	  		};
 	  		break;
-	  	case "ExprVar":	  		
+	  	case "ExprVar":
 	  		if(env[exp[1]]){
           var instrucciones = [];
           if(env[exp[1]].startsWith("@G_")){ // si es una funcion tengo que compilar call()
             instrucciones.push(gen_call(exp[1]));
           }
-          instrucciones.push(gen_mov_reg(r, env[exp[1]]));
+          if(env[exp[1]].startsWith("$fun")){
+            instrucciones.push(gen_load(r, "$fun", i_fun++));
+          }else{
+            instrucciones.push(gen_mov_reg(r, env[exp[1]]));
+          }          
 		  		return {
 		  			instrucciones: instrucciones,
 		  			env: env,
@@ -193,8 +221,6 @@ module.exports =
 		  		};
 	  		}else{
 	  			console.log("NO ENCONTRE LA VARIABLE " + exp[1]);
-	  			//console.log(env);
-	  			//console.log(exp);
 	  		}
 	  		break;
 	  	case "ExprLet":
@@ -209,35 +235,109 @@ module.exports =
 	  			reg: comp_e2.reg
 	  		};
 	  		break;
-	  	case "ExprLambda":	  		
-  			var ext = [];
-  			ext[exp[1]] = ARG_LOCAL; // exp[1] es el nombre del parametro que recibe la funcion lambda
-	  		var ext_env = extenderEntorno(env, ext);
-	  		var comp = compilarExpresion(tags, ext_env, exp[2], reg+1);
-	  		var instrucciones = [
-	  			declararEtiqueta(rtn_i),
-	  			gen_mov_reg(FUN_LOCAL, FUN_GLOBAL), // Mover el parámetro @fun a un registro local.
-	  			gen_mov_reg(ARG_LOCAL, ARG_GLOBAL), // Mover el parámetro @arg a un registro local.
-	  			...comp.instrucciones, // expando las instrucciones del cuerpo de la funcion
-	  			gen_mov_reg(RES_LOCAL, "$r" + (reg + 1)),
-	  			gen_mov_reg(RES_GLOBAL, RES_LOCAL),
-	  			gen_return()
-	  			
-	  		];
+	  	case "ExprLambda":
+        var ext = [];
+        if(exp[2][0] == "ExprLambda"){
+          ext[exp[1]] = "$fun_";
+        }else{
+          ext[exp[1]] = ARG_LOCAL; // exp[1] es el nombre del parametro que recibe la funcion lambda
+        }
+        var ext_env = extenderEntorno(env, ext);
+        var comp = compilarExpresion(tags, ext_env, exp[2], reg+1);
+        if(exp[2][0] == "ExprLambda"){
+          /*test_0:
+          mov_reg($fun, @fun)
+          mov_reg($arg, @arg)
+          alloc($r1,3)
+          mov_int($t, 3)
+          store($r1, 0, $t)
+          mov_label($t, test_1)
+          store($r1, 1, $t)
+          store($r1, 2, $arg)
+          mov_reg($res, $r1)
+          mov_reg(@res, $res)
+          return()*/
+          var r1 = "$r" + (reg + 1);
+          var n = 2 + getCantidadVariablesLibres(exp, ext_env);
+          var instrucciones = [
+            declararEtiqueta(rtn_i),
+            gen_mov_reg(FUN_LOCAL, FUN_GLOBAL), // Mover el parámetro @fun a un registro local.
+            gen_mov_reg(ARG_LOCAL, ARG_GLOBAL), // Mover el parámetro @arg a un registro local.
+            gen_alloc(r1, n),
+            gen_mov_int(t, TAG_CLOSURE),
+            gen_store(r1, 0, t),
+            gen_mov_label(t, comp.label),
+            gen_store(r1, 1, t)
+          ];
+          var pos = 2;
+          for(var i = 0; i < n-3; i++){
+            // load($t, $fun, 2)
+            // store($r2, 2, $t)
+            pos = i + 2;
+            instrucciones.push(gen_load(t, "$fun", pos));
+            instrucciones.push(gen_store(r1, pos, t));
+            pos++;
+          }
+          if(n > 2){
+            instrucciones.push(gen_store(r1, pos, ARG_LOCAL));
+          }
+          instrucciones = instrucciones.concat([
+            gen_mov_reg(RES_LOCAL, r1),
+            gen_mov_reg(RES_GLOBAL, RES_LOCAL),
+            gen_return(),
+            ...comp.instrucciones, // expando las instrucciones del cuerpo de la funcion
+          ]);
+        }else{
+          var instrucciones = [
+            declararEtiqueta(rtn_i),
+            gen_mov_reg(FUN_LOCAL, FUN_GLOBAL), // Mover el parámetro @fun a un registro local.
+            gen_mov_reg(ARG_LOCAL, ARG_GLOBAL), // Mover el parámetro @arg a un registro local.
+            ...comp.instrucciones, // expando las instrucciones del cuerpo de la funcion
+            gen_mov_reg(RES_LOCAL, "$r" + (reg + 1)),
+            gen_mov_reg(RES_GLOBAL, RES_LOCAL),
+            gen_return()          
+          ];
+        }
 	  		return {
 	  			instrucciones: instrucciones,
 	  			env: env,
-	  			reg: comp.reg + 1
+	  			reg: comp.reg + 1,
+          label: rtn_i
 	  		};
-
-	  		// TODO: TEST09
   	}
 
   }
 
-  function getVariablesLibres(exp){
-  	// TODO
-  	return [];
+  function getCantidadVariablesLibres(exp, env, id){    
+    switch(exp[0]){
+      case "ExprConstructor":
+        return 0;
+      case "ExprChar":
+        return 0;
+      case "ExprNumber":
+        return 0;
+      case "ExprApply":
+        return getCantidadVariablesLibres(exp[1], env, id) + getCantidadVariablesLibres(exp[2], env, id);
+      case "ExprLet":
+        return getCantidadVariablesLibres(exp[2], env, id) + getCantidadVariablesLibres(exp[3], env, id);
+      case "ExprVar":
+        var v = env[exp[1]];
+        if(!v || v.startsWith("@G_") || v == id || esPrimitiva(v)){
+          return 0;
+        }else{
+          return 1;
+        }
+      case "ExprLambda":
+        return getCantidadVariablesLibres(exp[2], env, exp[1]);
+      // TODO: case "ExprCase"
+      default:
+        return 0;
+    }
+  }
+
+  function esPrimitiva(v){
+    // TODO: agregar el resto de las primitivas ADD etc
+    return ["unsafePrintChar","unsafePrintInt"].indexOf(v) != -1;
   }
 
   function extenderEntorno(env, ext){
@@ -262,7 +362,7 @@ module.exports =
   // TABLA DE TAGS
   function armarTablaDeTags(jsonAST){
   	// no recolecta los constructores dentro de case, TODO
-  	var tablaDeTags = {"Int": 1, "Char": 2, "Closure": 3};
+  	var tablaDeTags = {"Int": 1, "Char": 2, "Closure": TAG_CLOSURE};
   	var constructores = getConstructores(jsonAST);
   	var i = 4;
   	constructores.forEach(function(e){
@@ -457,8 +557,9 @@ module.exports =
     test05: (function(){ return test("05")}),
     test06: (function(){ return test("06")}),
     test07: (function(){ return test("07")}),
-    test08: (function(){ return test("08")}),    
+    test08: (function(){ return test("08")}),
     testHasta: testHasta,
     test09: (function(){ return test("09")}),
+    test10: (function(){ return test("10")})
   };
 })();

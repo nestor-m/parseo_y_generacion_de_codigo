@@ -1,0 +1,35 @@
+jump(main)
+
+test:
+alloc($r4,2)
+mov_int($t,3)
+store($r4,0,$t)
+mov_label($t,test_0)
+store($r4,1,$t)
+mov_reg(@G_test, $r4)
+return()
+
+
+test_0:
+mov_reg($fun,@fun)
+mov_reg($arg,@arg)
+load($t,$arg,1)
+print($t)
+return()
+
+
+
+main:
+call(test)
+mov_reg($r5,@G_test)
+
+alloc($r6, 2)
+mov_int($t, 1)
+store($r6, 0, $t)
+mov_int($t, 42)
+store($r6, 1, $t)
+
+mov_reg(@fun,$r5)
+mov_reg(@arg,$r6)
+load($t,$r5,1)
+icall($t)

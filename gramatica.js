@@ -30,6 +30,7 @@
       exps = aplicarPrecedenciaOperadoresUnarios(exps, ["NOT"]);
       exps = aplicarPrecedenciaOperadoresBinarios(exps, ["AND"]);
       exps = aplicarPrecedenciaOperadoresBinarios(exps, ["OR"]);
+      exps = aplicarPrecedenciaExprApply(exps);
       return exps;
     }
 

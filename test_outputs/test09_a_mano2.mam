@@ -1,0 +1,64 @@
+jump(main)
+
+test_0:
+mov_reg($fun, @fun)
+mov_reg($arg, @arg)
+alloc($r1, 3)
+mov_int($t, 3)
+store($r1, 0, $t)
+mov_label($t, test_1)
+store($r1, 1, $t)
+store($r1, 2, $arg)
+mov_reg($res, $r1)
+mov_reg(@res, $res)
+return()
+
+test_1:
+mov_reg($fun, @fun)
+mov_reg($arg, @arg)
+load($r2, $fun, 2)
+load($r3, $r2, 1)
+print($r3)
+mov_reg($r4, $arg)
+load($r5, $r4, 1)
+print($r5)
+mov_reg($res, $r2)
+mov_reg(@res, $res)
+return()
+
+test:
+alloc($r9, 2)
+mov_int($t, 3)
+store($r9, 0, $t)
+mov_label($t, test_0)
+store($r9, 1, $t)
+mov_reg(@G_test, $r9)
+return()
+
+main:
+call(test)
+mov_reg($r10, @G_test)
+
+alloc($r11, 2)
+mov_int($t, 1)
+store($r11, 0, $t)
+mov_int($t, 42)
+store($r11, 1, $t)
+
+mov_reg(@fun, $r10)
+mov_reg(@arg, $r11)
+load($t, $r10, 1)
+icall($t)
+mov_reg($r9, @res)
+
+alloc($r12, 2)
+mov_int($t, 1)
+store($r12, 0, $t)
+mov_int($t, 43)
+store($r12, 1, $t)
+
+mov_reg(@fun, $r9)
+mov_reg(@arg, $r12)
+load($t, $r9, 1)
+icall($t)
+mov_reg($r8, @res)

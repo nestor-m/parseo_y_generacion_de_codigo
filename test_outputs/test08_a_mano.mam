@@ -1,6 +1,7 @@
 jump(main)
 main:
 jump(start_1)
+
 main_1:
 mov_reg($fun, @fun)
 mov_reg($arg, @arg)
@@ -8,6 +9,7 @@ mov_reg($r2, $arg)
 mov_reg($res, $r2)
 mov_reg(@res, $res)
 return()
+
 start_1:
 alloc($r0, 2)
 mov_int($t, 3)
