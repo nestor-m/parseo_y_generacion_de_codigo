@@ -49,7 +49,6 @@ module.exports =
   function compilarDefinicion(tags, env, reg, def){
     i_fun = 2;
     defActual = def[1];
-    console.log("COMPILANDO " + defActual);
   	var r = compilarExpresion(tags, env, def[2], reg);
     if(def[2][0] == "ExprLambda"){
       // es expresion lambda
